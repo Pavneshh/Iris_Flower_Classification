@@ -3,6 +3,7 @@ import numpy as np
 import joblib
 import time
 import os
+from pathlib import Path
 
 # ----------------------------
 # PAGE CONFIG
@@ -15,14 +16,12 @@ st.set_page_config(
 )
 
 # ----------------------------
-# LOAD MODEL
+# ROBUST MODEL PATH RESOLUTION
 # ----------------------------
-@st.cache_resource
-def load_model():
-    model_path = os.path.join("models", "iris_model.pkl")
-    return joblib.load(model_path)
-
-model = load_model()
+# Resolve relative to THIS file's location, not the process's working
+# directory — Streamlit Cloud does not guarantee cwd == repo root.
+APP_DIR = Path(__file__).parent.resolve()
+MODEL_PATH = APP_DIR / "models" / "iris_model.pkl"
 
 CLASS_NAMES = ["setosa", "versicolor", "virginica"]
 
@@ -44,9 +43,6 @@ FLOWER_INFO = {
     },
 }
 
-# ----------------------------
-# ACCENT PALETTE (Electric Cyan)
-# ----------------------------
 ACCENT = "#00e0ff"
 ACCENT_SOFT = "rgba(0, 224, 255, 0.15)"
 ACCENT_GLOW = "rgba(0, 224, 255, 0.55)"
@@ -76,7 +72,6 @@ html, body, [class*="css"] {{
     margin: 0 auto;
 }}
 
-/* ---------- TITLE ---------- */
 .hero-title {{
     font-family: 'Space Grotesk', sans-serif;
     font-size: 2.6rem;
@@ -96,7 +91,6 @@ html, body, [class*="css"] {{
     line-height: 1.5;
 }}
 
-/* ---------- GLASS CARD ---------- */
 .glass-card {{
     background: rgba(255, 255, 255, 0.04);
     border: 1px solid rgba(255, 255, 255, 0.08);
@@ -132,7 +126,6 @@ html, body, [class*="css"] {{
     margin-bottom: 0.8rem;
 }}
 
-/* ---------- SLIDERS ---------- */
 div[data-testid="stSlider"] > div > div > div > div {{
     background: linear-gradient(90deg, {ACCENT}, #6c5ce7) !important;
 }}
@@ -142,7 +135,6 @@ div[data-testid="stSlider"] label {{
     font-weight: 500;
 }}
 
-/* ---------- BUTTON ---------- */
 div.stButton > button {{
     width: 100%;
     background: linear-gradient(135deg, {ACCENT} 0%, #6c5ce7 100%);
@@ -168,7 +160,6 @@ div.stButton > button:active {{
     transform: translateY(0px) scale(0.99);
 }}
 
-/* ---------- RESULT PANEL ---------- */
 .result-card {{
     background: rgba(255, 255, 255, 0.045);
     border: 1px solid rgba(255, 255, 255, 0.08);
@@ -236,7 +227,6 @@ div.stButton > button:active {{
     margin-bottom: 1rem;
 }}
 
-/* ---------- PROBABILITY BARS ---------- */
 .prob-row {{
     display: flex;
     align-items: center;
@@ -271,7 +261,23 @@ div.stButton > button:active {{
     transition: width 0.8s ease;
 }}
 
-/* ---------- FOOTER ---------- */
+.error-card {{
+    background: rgba(255, 60, 60, 0.06);
+    border: 1px solid rgba(255, 80, 80, 0.3);
+    border-radius: 18px;
+    padding: 1.5rem 1.8rem;
+    color: #ffb3b3;
+    font-size: 0.92rem;
+    line-height: 1.7;
+}}
+
+.error-card code {{
+    background: rgba(255,255,255,0.08);
+    padding: 2px 6px;
+    border-radius: 6px;
+    color: #ffd9d9;
+}}
+
 .app-footer {{
     text-align: center;
     color: #565c69;
@@ -290,15 +296,7 @@ div.stButton > button:active {{
 """, unsafe_allow_html=True)
 
 # ----------------------------
-# SESSION STATE
-# ----------------------------
-if "predicted" not in st.session_state:
-    st.session_state.predicted = False
-    st.session_state.pred_class = None
-    st.session_state.pred_proba = None
-
-# ----------------------------
-# HEADER
+# HEADER (rendered first so errors below still show a styled page)
 # ----------------------------
 st.markdown('<div class="hero-title">🌸 Iris AI Classifier</div>', unsafe_allow_html=True)
 st.markdown(
@@ -308,13 +306,55 @@ st.markdown(
 )
 
 # ----------------------------
+# LOAD MODEL (with a clear, styled failure path instead of a raw traceback)
+# ----------------------------
+@st.cache_resource
+def load_model(path: str):
+    return joblib.load(path)
+
+if not MODEL_PATH.exists():
+    st.markdown(f"""
+    <div class="error-card">
+        <b>⚠️ Model file not found.</b><br><br>
+        Looked for it at:<br>
+        <code>{MODEL_PATH}</code><br><br>
+        This usually means one of the following:<br>
+        1. <code>models/iris_model.pkl</code> was not committed to GitHub (check it shows up in the repo on github.com).<br>
+        2. It's being skipped by a <code>.gitignore</code> rule (e.g. <code>*.pkl</code> or <code>models/</code>).<br>
+        3. The file was committed with Git LFS, which Streamlit Cloud does not pull by default.<br><br>
+        Fix: run <code>git add models/iris_model.pkl -f</code>, commit, and push, then redeploy.
+    </div>
+    """, unsafe_allow_html=True)
+    st.stop()
+
+try:
+    model = load_model(str(MODEL_PATH))
+except Exception as e:
+    st.markdown(f"""
+    <div class="error-card">
+        <b>⚠️ Failed to load the model.</b><br><br>
+        <code>{type(e).__name__}: {e}</code><br><br>
+        The file exists at <code>{MODEL_PATH}</code> but could not be unpickled.
+        This often happens when the model was trained with a different scikit-learn /
+        numpy version than what's installed here. Re-train and re-save the model using
+        the same versions pinned in <code>requirements.txt</code>.
+    </div>
+    """, unsafe_allow_html=True)
+    st.stop()
+
+# ----------------------------
+# SESSION STATE
+# ----------------------------
+if "predicted" not in st.session_state:
+    st.session_state.predicted = False
+    st.session_state.pred_class = None
+    st.session_state.pred_proba = None
+
+# ----------------------------
 # LAYOUT: SPLIT SCREEN
 # ----------------------------
 left_col, right_col = st.columns([1.05, 1], gap="large")
 
-# ============================
-# LEFT PANEL — INPUTS
-# ============================
 with left_col:
     st.markdown('<div class="glass-card">', unsafe_allow_html=True)
     st.markdown('<div class="section-heading">📏 Sepal Measurements</div>', unsafe_allow_html=True)
@@ -357,9 +397,6 @@ with left_col:
             st.session_state.pred_class = pred_label
             st.session_state.pred_proba = proba
 
-# ============================
-# RIGHT PANEL — RESULT
-# ============================
 with right_col:
     if st.session_state.predicted and st.session_state.pred_class:
         species = st.session_state.pred_class
@@ -413,9 +450,6 @@ with right_col:
         </div>
         """, unsafe_allow_html=True)
 
-# ----------------------------
-# FOOTER
-# ----------------------------
 st.markdown(
     '<div class="app-footer">Built with <span>Streamlit</span> + <span>Machine Learning</span> · '
     'Random Forest Classifier</div>',

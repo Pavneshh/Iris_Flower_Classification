@@ -96,7 +96,7 @@ streamlit run app.py
 
 ## 📸 UI Preview
 
-(Add screenshot here after deployment)
+![webpage image](image.png)
 
 ---
 
@@ -108,4 +108,4 @@ Built by **Pavnesh Bhatt**
 
 ## 📌 Note
 
-This project is part of an internship task (Oasis Infobyte
+This project is part of an internship task (Oasis Infobyte)
